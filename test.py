@@ -1,16 +1,75 @@
-def evaluation(logits, labels):
-    """
-     输入
-    logits: 经过cnn_inference处理过的tensor
-    labels:
-    返回
-    accuracy：正确率
-    """
-    with tf.variable_scope('accuracy') as scope:
-        prediction = tf.nn.softmax(logits)  # 这个logits有n_classes列
-        # prediction每行的最大元素（1）的索引和label的值相同则为1 否则为0。
-        correct = tf.nn.in_top_k(prediction, labels, 1)
-        # correct = tf.nn.in_top_k(logits, labels, 1)   也可以不需要prediction过渡，因为最大值的索引没变，这里这样写是为了更好理解
-        correct = tf.cast(correct, tf.float16)  # 记得要转换格式
-        accuracy = tf.reduce_mean(correct)
-    return accuracy
+from PIL import Image
+import matplotlib.pyplot as plt
+import input_data
+import model
+import os
+import numpy as np
+import tensorflow as tf
+
+
+def get_one_image(train):
+    '''Randomly pick one image from training data
+    Return: ndarray
+    '''
+    n = len(train)
+    print(n)
+    ind = np.random.randint(0, n)
+    img_dir = train[ind]
+
+    image = Image.open(img_dir)
+    plt.imshow(image)
+    image = image.resize([208, 208])
+    image = np.array(image)
+    return image
+
+
+def evaluate_one_image():
+    '''Test one image against the saved models and parameters
+    '''
+
+    # you need to change the directories to yours.
+    # train_dir = 'D:/python/deep-learning/CatVsDog/Project/test_image/'
+    train_dir = 'D:/python/deep-learning/CatVsDog/Project/test_image/'
+    train, train_label = input_data.get_files(train_dir)
+    image_array = get_one_image(train)
+
+    with tf.Graph().as_default():
+        BATCH_SIZE = 1
+        N_CLASSES = 2
+
+        image = tf.cast(image_array, tf.float32)
+        image = tf.image.per_image_standardization(image)
+        image = tf.reshape(image, [1, 208, 208, 3])
+        logit = model.cnn_inference(image, BATCH_SIZE, N_CLASSES)
+
+        logit = tf.nn.softmax(logit)
+
+        x = tf.placeholder(tf.float32, shape=[208, 208, 3])
+
+        # you need to change the directories to yours.
+        logs_train_dir = 'D:/python/deep-learning/CatVsDog/Project/log/'
+
+        saver = tf.train.Saver()
+
+        with tf.Session() as sess:
+
+            print("Reading checkpoints...")
+            ckpt = tf.train.get_checkpoint_state(logs_train_dir)
+            if ckpt and ckpt.model_checkpoint_path:
+                global_step = ckpt.model_checkpoint_path.split('/')[-1].split('-')[-1]
+                saver.restore(sess, ckpt.model_checkpoint_path)
+                print('Loading success, global_step is %s' % global_step)
+            else:
+                print('No checkpoint file found')
+
+            prediction = sess.run(logit, feed_dict={x: image_array})
+            max_index = np.argmax(prediction)
+            if max_index == 0:
+                print('This is a cat with possibility %.6f' % prediction[:, 0])
+            else:
+                print('This is a dog with possibility %.6f' % prediction[:, 1])
+    plt.imshow(image_array)
+    plt.show()
+
+
+evaluate_one_image()
